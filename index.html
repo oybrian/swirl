@@ -470,31 +470,52 @@ function parseLabelText(text){
   }
   return out;
 }
+/* Upscale + grayscale/contrast pass so stylised label type reads better. */
+function fileToOCRImage(file){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const scale=Math.min(2,1600/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");
+      cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+      const ctx=cv.getContext("2d");
+      try{ ctx.filter="grayscale(1) contrast(1.35) brightness(1.05)"; }catch(e){}
+      ctx.drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(img.src);
+      res(cv);
+    };
+    img.onerror=()=>res(null);
+    img.src=URL.createObjectURL(file);
+  });
+}
 async function runScan(file){
   const wrap=$("scan-status-wrap"), st=$("scan-status");
-  wrap.classList.remove("hidden"); st.textContent="Reading the label…";
+  wrap.classList.remove("hidden");
+  /* First scan of a bottle starts fresh; further scans (e.g. the back label)
+     only fill fields that are still empty. A bottle "session" ends on Clear/save. */
+  const merge=!!pendingPhoto;
+  st.textContent=merge?"Reading the next label…":"Reading the label…";
   const shot=await fileToDataURL(file);
-  if(shot) setScanPhoto(shot);
+  if(shot&&!merge) setScanPhoto(shot);
   try{
     const T=await loadTesseract();
-    const worker=await T.createWorker("eng");
-    const { data }=await worker.recognize(file);
+    const worker=await T.createWorker(["eng","fra","spa","ita","deu"]);
+    const ocrImg=await fileToOCRImage(file);
+    const { data }=await worker.recognize(ocrImg||file);
     await worker.terminate();
     const p=parseLabelText(data.text||"");
     const applied=[];
-    /* A fresh scan replaces the bottle info: wipe first, then fill what was detected. */
-    sel.country=""; sel.region=""; sel.appellation=""; sel.producer=""; sel.wine=""; sel.vintage=""; sel.grape="";
-    if(p.country){ sel.country=p.country; applied.push("country: "+p.country); }
-    if(p.region){ sel.region=p.region; applied.push("region: "+p.region); }
-    if(p.appellation){ sel.appellation=p.appellation; applied.push("appellation: "+p.appellation); }
-    if(p.producer){ sel.producer=p.producer; applied.push("producer: "+p.producer); }
-    if(p.vintage){ sel.vintage=p.vintage; applied.push("vintage: "+p.vintage); }
-    if(p.grape){ sel.grape=p.grape; applied.push("grape: "+p.grape); }
+    if(!merge){ sel.country=""; sel.region=""; sel.appellation=""; sel.producer=""; sel.wine=""; sel.vintage=""; sel.grape=""; }
+    const fill=(key,label)=>{ if(p[key]&&(!merge||!sel[key])){ sel[key]=p[key]; applied.push(label+": "+p[key]); } };
+    fill("country","country"); fill("region","region"); fill("appellation","appellation");
+    fill("producer","producer"); fill("vintage","vintage"); fill("grape","grape");
     sel.customCountry=!!sel.country&&!COUNTRIES.includes(sel.country);
     sel.customRegion=!!sel.region&&!REGIONS.some(r=>r.n===sel.region);
     sel.customGrape=!!sel.grape&&!GRAPES.includes(sel.grape);
     applySelToForm(); onSelChange();
-    st.textContent=applied.length?("Filled from the label — "+applied.join(" · ")+". Check and fix anything off."):"Couldn't read the label clearly — type the details in manually.";
+    st.textContent=applied.length
+      ?((merge?"Merged — added ":"Filled from the label — ")+applied.join(" · ")+". Check and fix anything off."+(merge?"":" Tip: the back label usually lists producer, origin and grape — scan it too; extra scans only fill empty fields."))
+      :"Couldn't read this label clearly — try the back label, or type the details in manually.";
   }catch(e){
     st.textContent="Scan failed — type the details in manually.";
   }
