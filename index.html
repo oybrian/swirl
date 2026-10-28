@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Swirl — Wine Tasting Journal</title>
+<style>
+:root{ --bg:#F2F2F7; --card:#fff; --ink:#1c1c1e; --sub:#8e8e93; --line:#e5e5ea; --acc:#7B2231; --acc-soft:#f7e9eb; }
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body{ margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,Arial,sans-serif; padding-bottom:env(safe-area-inset-bottom); }
+header{ padding:calc(env(safe-area-inset-top) + 18px) 20px 10px; }
+header h1{ margin:0; font-size:32px; letter-spacing:-.5px; }
+header p{ margin:4px 0 0; color:var(--sub); font-size:14px; }
+.tabs{ display:flex; gap:8px; padding:10px 20px 4px; }
+.tab{ flex:1; border:0; border-radius:12px; padding:10px; font-size:15px; font-weight:600; background:#e9e9ee; color:var(--sub); cursor:pointer; }
+.tab.on{ background:var(--ink); color:#fff; }
+main{ padding:10px 16px 40px; max-width:640px; margin:0 auto; }
+.card{ background:var(--card); border-radius:16px; padding:16px; margin-top:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.card h2{ margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--sub); }
+.field{ margin-bottom:12px; position:relative; }
+.field label{ display:block; font-size:13px; color:var(--sub); margin-bottom:6px; }
+.field input{ width:100%; font-size:16px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#fafafa; }
+.field input:focus{ outline:none; border-color:var(--acc); background:#fff; }
+.combo-list{ position:absolute; z-index:20; left:0; right:0; top:100%; margin-top:4px; background:#fff; border:1px solid var(--line); border-radius:12px; max-height:220px; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:0 8px 24px rgba(0,0,0,.12); display:none; }
+.combo-list.open{ display:block; }
+.combo-list button{ display:block; width:100%; text-align:left; border:0; background:none; padding:12px; font-size:16px; cursor:pointer; }
+.combo-list button:active{ background:var(--acc-soft); }
+.combo-list button.custom{ color:var(--acc); font-weight:600; border-top:1px solid var(--line); }
+.combo-list .sub{ display:block; font-size:12px; color:var(--sub); font-weight:400; }
+.btn{ display:block; width:100%; border:0; border-radius:14px; padding:15px; font-size:17px; font-weight:700; cursor:pointer; }
+.btn.primary{ background:var(--acc); color:#fff; }
+.btn.ghost{ background:#e9e9ee; color:var(--ink); margin-top:8px; }
+.btn{ transition:transform .1s ease, opacity .1s ease; -webkit-tap-highlight-color:transparent; }
+.btn:active{ transform:scale(.97); opacity:.8; }
+.btn.small{ padding:10px; font-size:15px; }
+.spec{ display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:15px; }
+.spec:last-child{ border-bottom:0; }
+.spec .k{ color:var(--sub); }
+.spec .v{ font-weight:600; text-align:right; }
+.step{ display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.step:last-child{ border-bottom:0; }
+.step .t{ flex:0 0 52px; font-weight:700; color:var(--acc); font-size:14px; padding-top:2px; }
+.step .d{ font-size:15px; line-height:1.45; }
+.step .d b{ font-weight:700; }
+.tips{ margin:0; padding-left:18px; font-size:14px; color:#3a3a3c; line-height:1.6; }
+.tips li{ margin-bottom:6px; }
+.stars{ display:flex; gap:6px; margin:6px 0 12px; }
+.stars button{ border:0; background:none; font-size:34px; cursor:pointer; color:#d1d1d6; padding:2px; }
+.stars button.lit{ color:#f5a623; }
+.chips{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; }
+.chips button{ border:1px solid var(--line); background:#fafafa; border-radius:20px; padding:8px 14px; font-size:14px; cursor:pointer; }
+.chips button.on{ background:var(--acc); border-color:var(--acc); color:#fff; }
+.seg{ display:flex; gap:8px; }
+.seg button{ flex:1; border:1px solid var(--line); background:#fafafa; border-radius:12px; padding:12px 0; font-size:15px; font-weight:600; color:var(--ink); cursor:pointer; transition:transform .1s ease, opacity .1s ease; -webkit-tap-highlight-color:transparent; }
+.seg button.on{ background:var(--acc); border-color:var(--acc); color:#fff; }
+.seg button:active{ transform:scale(.96); opacity:.85; }
+.input-wrap{ position:relative; }
+.input-wrap input{ padding-right:42px; }
+.clr-x{ position:absolute; right:8px; top:50%; transform:translateY(-50%); width:28px; height:28px; border-radius:50%; border:0; background:#e9e9ee; color:var(--sub); font-size:16px; line-height:1; cursor:pointer; z-index:21; }
+.clr-x:active{ transform:translateY(-50%) scale(.9); }
+textarea{ width:100%; font-size:16px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#fafafa; min-height:70px; font-family:inherit; resize:vertical; }
+textarea:focus{ outline:none; border-color:var(--acc); background:#fff; }
+.log-item{ border-bottom:1px solid var(--line); padding:12px 0; }
+.log-item:last-child{ border-bottom:0; }
+.log-item{ cursor:pointer; }
+.log-item:active{ background:rgba(0,0,0,.045); }
+.log-item .meta{ font-size:13px; color:var(--sub); margin-bottom:4px; }
+.log-item .sel{ font-size:15px; font-weight:600; margin-bottom:4px; }
+.log-item .notes{ font-size:14px; color:#3a3a3c; line-height:1.5; }
+.log-item .r{ color:#f5a623; letter-spacing:2px; }
+.empty{ text-align:center; color:var(--sub); padding:30px 10px; font-size:15px; }
+.dimrow{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.dimrow .dl{ flex:0 0 92px; font-size:14px; color:var(--sub); }
+.dimbar{ display:flex; gap:5px; flex:1; }
+.dimbar button{ flex:1; height:24px; border:1px solid var(--line); background:#fafafa; border-radius:7px; cursor:pointer; padding:0; }
+.dimbar button.on{ background:var(--acc); border-color:var(--acc); }
+.dimview{ display:flex; align-items:center; gap:8px; margin:4px 0; }
+.dimview .dl{ flex:0 0 82px; font-size:13px; color:var(--sub); }
+.dimtrack{ flex:1; height:9px; background:#e9e9ee; border-radius:5px; overflow:hidden; }
+.dimfill{ height:100%; background:var(--acc); border-radius:5px; }
+.dimview .dv{ flex:0 0 14px; font-size:13px; font-weight:600; text-align:right; }
+.search-link{ display:block; text-align:center; margin-top:10px; font-size:14px; color:var(--acc); }
+.hidden{ display:none !important; }
+/* brew timer overlay */
+#brew-timer{ position:fixed; inset:0; z-index:100; background:var(--bg); display:flex; flex-direction:column; padding:calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 20px); }
+#brew-timer 100%{ background:var(--card); } }
+/* photo lightbox */
+#photo-view{ position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.93); display:flex; align-items:center; justify-content:center; padding:16px; }
+#photo-view.pv-hidden{ display:none; }
+#photo-view img{ max-width:100%; max-height:100%; border-radius:10px; }
+</style></head>
+<body>
+<header>
+  <h1>Swirl</h1>
+</header>
+<nav class="tabs">
+  <button class="tab on" id="tab-taste">Taste</button>
+  <button class="tab" id="tab-log">Wine log</button>
+</nav>
+<main>
+  <div id="view-taste">
+    <div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn ghost small" id="scan-btn" style="flex:1;width:auto">Scan</button>
+        <button class="btn ghost small" id="clear-btn" style="flex:0 0 auto;width:auto">Clear</button>
+      </div>
+      <input type="file" id="scan-file" accept="image/*" class="hidden">
+      <div class="field hidden" id="scan-status-wrap"><label>Scan result</label><div id="scan-status" style="font-size:14px;color:var(--sub)"></div></div>
+      <div id="scan-photo-wrap" class="hidden" style="margin-bottom:12px">
+        <img id="scan-photo-preview" alt="Label photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px">
+        <div style="font-size:12px;color:var(--sub);margin-top:4px">This label photo will be saved with the log entry.</div>
+        <div><button class="btn ghost small" id="scan-photo-remove" type="button" style="width:auto;margin-top:6px">Remove photo</button></div>
+      </div>
+      <div class="field"><label>Country</label><div class="input-wrap"><input id="in-country" autocomplete="off" placeholder="Type to search…"><button type="button" class="clr-x hidden" id="clear-country" aria-label="Clear country">×</button><div class="combo-list" id="list-country"></div></div></div>
+      <div class="field"><label>Region</label><div class="input-wrap"><input id="in-region" autocomplete="off" placeholder="Type to search…"><button type="button" class="clr-x hidden" id="clear-region" aria-label="Clear region">×</button><div class="combo-list" id="list-region"></div></div></div>
+      <div class="field"><label>Appellation — optional</label><input id="in-appellation" type="text" autocomplete="off" placeholder="e.g. Pauillac, Barolo, Gevrey-Chambertin"></div>
+      <div class="field"><label>Producer</label><input id="in-producer" type="text" autocomplete="off" placeholder="Winery / château — e.g. Clos Mogador"></div>
+      <div class="field"><label>Wine — optional</label><input id="in-wine" type="text" autocomplete="off" placeholder="Cuvée or wine name"></div>
+      <div style="display:flex;gap:10px">
+        <div class="field" style="flex:1"><label>Vintage</label><input id="in-vintage" type="text" autocomplete="off" placeholder="e.g. 2016 or NV"></div>
+        <div class="field" style="flex:1"><label>Grape</label><input id="in-grape" autocomplete="off" placeholder="Type to search…"><div class="combo-list" id="list-grape"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Serving</h2>
+      <div style="display:flex;gap:10px">
+        <div class="field" style="flex:1"><label>Decanting (min) — optional</label><input id="in-decant" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 60"></div>
+        <div class="field" style="flex:1"><label>Serving temp (°C) — optional</label><input id="in-temp" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 16"></div>
+      </div>
+    </div>
+    <div class="card" id="logform-card">
+      <h2>Log this wine</h2>
+      <div class="field"><label>Your rating</label><div class="stars" id="stars"></div></div>
+      <div class="field"><label>Aroma notes</label><div class="chips" id="chips-aroma"></div></div>
+      <div class="field"><label>Flavor notes</label><div class="chips" id="chips-flavor"></div></div>
+      <div class="field"><label>Taste profile</label><div id="dims"></div></div>
+      <div class="field"><label>Food pairing — optional</label><input id="log-pairing" type="text" autocomplete="off" placeholder="What you had it with"></div>
+      <div style="display:flex;gap:10px">
+        <div class="field" style="flex:1"><label>Price paid — optional</label><input id="log-price" type="text" autocomplete="off" placeholder="e.g. $45"></div>
+        <div class="field" style="flex:1"><label>Where — optional</label><input id="log-where" type="text" autocomplete="off" placeholder="Shop or restaurant"></div>
+      </div>
+      <div class="field"><label>Notes — optional</label><input id="log-notes" type="text" autocomplete="off" placeholder="Anything else worth remembering"></div>
+      <button class="btn primary" id="save-btn">Save to wine log</button>
+    </div>
+  </div>
+  <div id="view-log" class="hidden">
+    <div class="card">
+      <h2>Past wines</h2>
+      <div id="clear-log-wrap" class="hidden" style="margin-bottom:6px"><button type="button" class="btn ghost small" id="clear-log-btn" style="width:auto;padding:8px 16px;font-size:13px">Clear all history</button></div>
+      <div id="log-list"></div>
+    </div>
+  </div>
+</main>
+<div id="photo-view" class="pv-hidden"><img id="photo-view-img" alt="Wine photo"></div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const LS_SEL="swirl_sel_v1", LS_LOG="swirl_log_v1";
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function vib(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+
+/* ================= data ================= */
+const COUNTRIES=["Argentina","Australia","Austria","Canada","Chile","France","Georgia","Germany","Greece","Hungary","Italy","Japan","Lebanon","New Zealand","Portugal","South Africa","Spain","Switzerland","USA","Uruguay","Other / custom"];
+const REGIONS=[
+ {n:"Alsace",c:"France"},{n:"Bordeaux",c:"France"},{n:"Burgundy",c:"France"},{n:"Champagne",c:"France"},{n:"Languedoc",c:"France"},{n:"Loire Valley",c:"France"},{n:"Provence",c:"France"},{n:"Rhône Valley",c:"France"},
+ {n:"Piedmont",c:"Italy"},{n:"Sicily",c:"Italy"},{n:"Tuscany",c:"Italy"},{n:"Veneto",c:"Italy"},
+ {n:"Priorat",c:"Spain"},{n:"Rías Baixas",c:"Spain"},{n:"Ribera del Duero",c:"Spain"},{n:"Rioja",c:"Spain"},
+ {n:"Finger Lakes",c:"USA"},{n:"Napa Valley",c:"USA"},{n:"Sonoma",c:"USA"},{n:"Willamette Valley",c:"USA"},
+ {n:"Mosel",c:"Germany"},{n:"Pfalz",c:"Germany"},{n:"Rheingau",c:"Germany"},
+ {n:"Wachau",c:"Austria"},{n:"Alentejo",c:"Portugal"},{n:"Douro",c:"Portugal"},
+ {n:"Mendoza",c:"Argentina"},{n:"Maipo Valley",c:"Chile"},{n:"Barossa Valley",c:"Australia"},
+ {n:"Marlborough",c:"New Zealand"},{n:"Stellenbosch",c:"South Africa"}
+];
+const GRAPES=["Albariño","Cabernet Franc","Cabernet Sauvignon","Carmenère","Chardonnay","Chenin Blanc","Gamay","Gewürztraminer","Grenache","Grüner Veltliner","Malbec","Merlot","Muscat","Nebbiolo","Pinot Gris","Pinot Noir","Riesling","Sangiovese","Sauvignon Blanc","Syrah / Shiraz","Tempranillo","Viognier","Xarel·lo","Zinfandel","Other / custom"];
+const AROMAS=["Black cherry","Blackcurrant","Blueberry","Cherry","Fig","Plum","Raspberry","Strawberry","Peach","Apricot","Citrus","Green apple","Pear","Pineapple","Rose","Violet","Floral","Herbal","Mint","Cedar","Tobacco","Leather","Vanilla","Chocolate","Coffee","Baking spice","Black pepper","Earthy","Forest floor","Mineral","Wet stone","Honey","Almond"];
+const FLAVORS=["Black fruit","Red fruit","Dark cherry","Cassis","Plum","Dark chocolate","Milk chocolate","Oak","Vanilla","Cedar","Tobacco","Leather","Truffle","Smoke","Licorice","Olive","Graphite","Espresso","Caramel","Dried fruit","Nutty","Juicy","Silky","Grippy tannins","Long finish","Crisp","Round"];
+const TASTE_DIMS=["Acidity","Tannin","Body","Sweetness","Finish"];
+
+/* ================= state ================= */
+const sel={ country:"", region:"", appellation:"", producer:"", wine:"", vintage:"", grape:"", decant:"", temp:"",
+  customCountry:false, customRegion:false, customGrape:false };
+function selectAllOnFocus(el){
+  const s=()=>{ try{ el.select(); }catch(e){} };
+  el.addEventListener("focus",()=>{ s(); requestAnimationFrame(s); setTimeout(s,100); });
+  el.addEventListener("click",()=>{ if(document.activeElement===el) s(); });
+}
+
+/* ================= searchable combo (same pattern as Spill) ================= */
+function makeCombo(inputId, listId, options, onPick){
+  const input=$(inputId), list=$(listId);
+  const norm=options.map(o=>typeof o==="string"?{n:o,sub:""}:{n:o.n,sub:o.sub||o.d||o.note||""});
+  let current="";
+  function render(filter){
+    const f=(filter||"").trim().toLowerCase();
+    const matches=norm.filter(o=>!f||o.n.toLowerCase().includes(f)||o.sub.toLowerCase().includes(f));
+    let html=matches.map(o=>`<button type="button" data-v="${esc(o.n)}"><span>${esc(o.n)}</span>${o.sub?`<span class="sub">${esc(o.sub)}</span>`:""}</button>`).join("");
+    const exact=norm.some(o=>o.n.toLowerCase()===f);
+    if(f&&!exact){
+      html+=`<button type="button" class="custom" data-v="__custom__">Use “${esc(filter.trim())}”<span class="sub">Not in the list — enter it manually</span></button>`;
+    }
+    list.innerHTML=html||`<button type="button" disabled><span class="sub">No matches</span></button>`;
+    list.classList.add("open");
+    list.querySelectorAll("button[data-v]").forEach(b=>{
+      b.onmousedown=e=>{ e.preventDefault(); pick(b.getAttribute("data-v")); };
+    });
+  }
+  function pick(v){
+    if(v==="__custom__"){ current=input.value.trim(); onPick(current, true); }
+    else{ current=v; input.value=v; onPick(v, false); }
+    list.classList.remove("open");
+    input.blur();
+  }
+  input.addEventListener("focus",()=>render(input.value===current?"":input.value));
+  input.addEventListener("input",()=>{ current=""; render(input.value); onPick(input.value.trim(), true); });
+  input.addEventListener("blur",()=>setTimeout(()=>list.classList.remove("open"),150));
+  return { set(v){ current=v||""; input.value=v||""; }, get(){ return current; } };
+}
+
+/* ================= selection persistence ================= */
+function saveSel(){ try{ localStorage.setItem(LS_SEL,JSON.stringify(sel)); }catch(e){} }
+function loadSel(){ try{ const s=JSON.parse(localStorage.getItem(LS_SEL)||"null"); if(s) Object.assign(sel,s); }catch(e){} }
+function onSelChange(){ saveSel(); }
+function syncClearBtns(){
+  const cc=$("clear-country"); if(cc) cc.classList.toggle("hidden",!$("in-country").value);
+  const cr=$("clear-region"); if(cr) cr.classList.toggle("hidden",!$("in-region").value);
+}
+let comboCountry, comboRegion, comboGrape;
+function applySelToForm(){
+  if(comboCountry) comboCountry.set(sel.country);
+  if(comboRegion) comboRegion.set(sel.region);
+  if(comboGrape) comboGrape.set(sel.grape);
+  $("in-appellation").value=sel.appellation||"";
+  $("in-producer").value=sel.producer||"";
+  $("in-wine").value=sel.wine||"";
+  $("in-vintage").value=sel.vintage||"";
+  $("in-decant").value=sel.decant||"";
+  $("in-temp").value=sel.temp||"";
+  syncClearBtns();
+}
+function clearAll(){
+  sel.country=""; sel.region=""; sel.appellation=""; sel.producer=""; sel.wine=""; sel.vintage=""; sel.grape="";
+  sel.decant=""; sel.temp=""; sel.customCountry=false; sel.customRegion=false; sel.customGrape=false;
+  if(typeof clearScanPhoto==="function") clearScanPhoto();
+  applySelToForm(); onSelChange();
+}
+
+/* ================= tabs ================= */
+function switchTab(which){
+  $("tab-taste").classList.toggle("on",which==="taste");
+  $("tab-log").classList.toggle("on",which==="log");
+  $("view-taste").classList.toggle("hidden",which!=="taste");
+  $("view-log").classList.toggle("hidden",which!=="log");
+  if(which==="log") renderLog();
+}
+
+/* ================= log form ================= */
+const dimVals={};
+function buildDims(){
+  const box=$("dims"); box.innerHTML="";
+  TASTE_DIMS.forEach(d=>{
+    dimVals[d]=0;
+    const row=document.createElement("div"); row.className="dimrow";
+    const lab=document.createElement("div"); lab.className="dl"; lab.textContent=d;
+    const bar=document.createElement("div"); bar.className="dimbar";
+    for(let i=1;i<=5;i++){
+      const btn=document.createElement("button");
+      btn.type="button"; btn.dataset.v=i;
+      btn.onclick=()=>{ dimVals[d]=i; paintDim(bar,i); vib(8); };
+      bar.appendChild(btn);
+    }
+    row.appendChild(lab); row.appendChild(bar);
+    box.appendChild(row);
+  });
+}
+function paintDim(bar,v){ bar.querySelectorAll("button").forEach(x=>x.classList.toggle("on",+x.dataset.v<=v)); }
+function resetDims(){ buildDims(); }
+let rating=0;
+const pickedAroma=new Set(), pickedFlavor=new Set();
+function buildStars(){
+  const box=$("stars"); box.innerHTML="";
+  for(let i=1;i<=5;i++){
+    const b=document.createElement("button");
+    b.type="button"; b.textContent="★"; b.dataset.v=i;
+    b.onclick=()=>{ rating=i; paintStars(); vib(8); };
+    box.appendChild(b);
+  }
+}
+function paintStars(){ $("stars").querySelectorAll("button").forEach(b=>b.classList.toggle("lit",+b.dataset.v<=rating)); }
+function buildChips(id, items, set){
+  const box=$(id); box.innerHTML="";
+  items.forEach(name=>{
+    const b=document.createElement("button");
+    b.type="button"; b.textContent=name;
+    if(set.has(name)) b.classList.add("on");
+    b.onclick=()=>{ if(set.has(name)) set.delete(name); else set.add(name); b.classList.toggle("on"); vib(6); };
+    box.appendChild(b);
+  });
+}
+/* The label photo IS the input: scanning fills the form (OCR) and the same
+   photo is saved with the log entry. Downscaled to max 1024px, JPEG 0.78. */
+let pendingPhoto=null;
+function setScanPhoto(url){
+  pendingPhoto=url||null;
+  const w=$("scan-photo-wrap"); if(!w) return;
+  if(url){ $("scan-photo-preview").src=url; w.classList.remove("hidden"); }
+  else{ w.classList.add("hidden"); }
+}
+function clearScanPhoto(){ setScanPhoto(null); }
+function fileToDataURL(file){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const scale=Math.min(1,1024/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");
+      cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+      cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(img.src);
+      res(cv.toDataURL("image/jpeg",0.78));
+    };
+    img.onerror=()=>res(null);
+    img.src=URL.createObjectURL(file);
+  });
+}
+function setupPhoto(){
+  $("photo-view").addEventListener("click",()=>$("photo-view").classList.add("pv-hidden"));
+  const rm=$("scan-photo-remove"); if(rm) rm.onclick=()=>clearScanPhoto();
+}
+
+/* ================= wine log storage ================= */
+function getLog(){ try{ return JSON.parse(localStorage.getItem(LS_LOG)||"[]"); }catch(e){ return []; } }
+function setLog(a){ try{ localStorage.setItem(LS_LOG,JSON.stringify(a)); return true; }catch(e){ return false; } }
+function saveWine(){
+  if(!rating){ alert("Tap the stars to rate this wine first."); return; }
+  const log=getLog();
+  log.unshift({
+    id:Date.now(), date:new Date().toISOString(),
+    country:sel.country, region:sel.region, appellation:sel.appellation, producer:sel.producer,
+    wine:sel.wine, vintage:sel.vintage, grape:sel.grape, decant:sel.decant, temp:sel.temp,
+    rating, aroma:[...pickedAroma], flavor:[...pickedFlavor],
+    dims:Object.assign({},dimVals),
+    pairing:$("log-pairing").value.trim(),
+    price:$("log-price").value.trim(),
+    where:$("log-where").value.trim(),
+    notes:$("log-notes").value.trim(),
+    photo:pendingPhoto||null
+  });
+  let savedOk=setLog(log);
+  if(!savedOk&&log[0].photo){
+    log[0].photo=null; savedOk=setLog(log);
+    if(savedOk) alert("Saved — but browser storage is nearly full, so the photo was left out.");
+  }
+  if(!savedOk){ alert("Could not save — browser storage is full. Delete some old log entries and try again."); return; }
+  rating=0; paintStars(); pickedAroma.clear(); pickedFlavor.clear(); resetDims();
+  buildChips("chips-aroma",AROMAS,pickedAroma);
+  buildChips("chips-flavor",FLAVORS,pickedFlavor);
+  $("log-pairing").value=""; $("log-price").value=""; $("log-where").value=""; $("log-notes").value="";
+  clearScanPhoto();
+  switchTab("log");
+}
+
+/* Load a past wine's settings back into the Taste form (ratings/notes stay in the log). */
+function loadEntry(e){
+  if(!e) return;
+  sel.country=e.country||""; sel.region=e.region||""; sel.appellation=e.appellation||"";
+  sel.producer=e.producer||""; sel.wine=e.wine||""; sel.vintage=e.vintage||""; sel.grape=e.grape||"";
+  sel.decant=e.decant||""; sel.temp=e.temp||"";
+  sel.customCountry=!!sel.country&&!COUNTRIES.includes(sel.country);
+  sel.customRegion=!!sel.region&&!REGIONS.some(r=>r.n===sel.region);
+  sel.customGrape=!!sel.grape&&!GRAPES.includes(sel.grape);
+  if(e.photo) setScanPhoto(e.photo); else clearScanPhoto();
+  applySelToForm(); onSelChange(); vib(10);
+  switchTab("taste");
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function renderLog(){
+  const log=getLog();
+  const clw=$("clear-log-wrap"); if(clw) clw.classList.toggle("hidden",!log.length);
+  const box=$("log-list");
+  if(!log.length){ box.innerHTML=`<div class="empty">No wines logged yet.<br>Fill in a bottle on the Taste tab, taste it, then rate it.</div>`; return; }
+  box.innerHTML=log.map(e=>{
+    const d=new Date(e.date);
+    const ds=d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+    const stars="★".repeat(e.rating)+"☆".repeat(5-e.rating);
+    const titleLine=[e.producer,e.wine,e.vintage].filter(Boolean).join(" · ");
+    const geoLine=[e.country,e.region,e.appellation,e.grape].filter(Boolean).join(" · ");
+    const serve=[];
+    if(e.decant) serve.push("Decanted "+e.decant+" min");
+    if(e.temp) serve.push("Served "+e.temp+"°C");
+    const notes=[];
+    if(e.aroma&&e.aroma.length) notes.push("Aroma: "+e.aroma.join(", "));
+    if(e.flavor&&e.flavor.length) notes.push("Flavor: "+e.flavor.join(", "));
+    if(e.pairing) notes.push("Pairing: "+e.pairing);
+    const priceLine=[e.price,e.where].filter(Boolean).join(" · ");
+    if(priceLine) notes.push(priceLine);
+    if(e.notes) notes.push(e.notes);
+    let dimHtml="";
+    if(e.dims){
+      const setDims=TASTE_DIMS.filter(x=>e.dims[x]>0);
+      if(setDims.length){
+        dimHtml=`<div style="margin:6px 0">`+setDims.map(x=>
+          `<div class="dimview"><div class="dl">${esc(x)}</div><div class="dimtrack"><div class="dimfill" style="width:${e.dims[x]*20}%"></div></div><div class="dv">${e.dims[x]}</div></div>`
+        ).join("")+`</div>`;
+      }
+    }
+    return `<div class="log-item" data-id="${e.id}">
+      <div class="meta">${ds}<span style="float:right;font-size:12px;color:var(--acc);font-weight:600">↺ Load</span></div>
+      <div class="sel"><span class="r">${stars}</span> ${esc(titleLine)}</div>
+      ${geoLine?`<div class="meta">${esc(geoLine)}</div>`:""}
+      ${serve.length?`<div class="meta">${esc(serve.join(" · "))}</div>`:""}
+      ${e.photo?`<img data-photo="1" src="${e.photo}" alt="Wine label photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-top:6px;cursor:pointer">`:""}
+      ${dimHtml}
+      ${notes.length?`<div class="notes">${notes.map(esc).join("<br>")}</div>`:""}
+      <div style="margin-top:6px"><button type="button" class="btn ghost small" data-del="${e.id}" style="width:auto;padding:6px 14px;font-size:13px">Delete</button></div>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("[data-del]").forEach(b=>{
+    b.onclick=()=>{
+      if(!confirm("Delete this log entry?")) return;
+      setLog(getLog().filter(e=>e.id!==+b.getAttribute("data-del")));
+      renderLog();
+    };
+  });
+  box.querySelectorAll("[data-photo]").forEach(im=>{
+    im.onclick=()=>{
+      const pv=$("photo-view"), pvImg=$("photo-view-img");
+      if(!pv||!pvImg) return;
+      pvImg.src=im.src;
+      pv.classList.remove("pv-hidden");
+    };
+  });
+  box.querySelectorAll(".log-item").forEach(item=>{
+    item.addEventListener("click",ev=>{
+      if(ev.target.closest("[data-del]")||ev.target.closest("[data-photo]")) return;
+      const entry=getLog().find(x=>x.id===+item.getAttribute("data-id"));
+      if(entry) loadEntry(entry);
+    });
+  });
+}
+
+/* ================= label scanner (OCR) ================= */
+function loadTesseract(){
+  return new Promise((resolve,reject)=>{
+    if(window.Tesseract) return resolve(window.Tesseract);
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload=()=>resolve(window.Tesseract);
+    s.onerror=()=>reject(new Error("OCR library failed to load"));
+    document.head.appendChild(s);
+  });
+}
+function parseLabelText(text){
+  const t=text.toLowerCase();
+  const out={country:"",region:"",appellation:"",producer:"",wine:"",vintage:"",grape:""};
+  const vm=t.match(/\b(19\d{2}|20\d{2})\b/); if(vm) out.vintage=vm[1];
+  const COUNTRY_KEYS=[["france","France"],["italia","Italy"],["italy","Italy"],["españa","Spain"],["espana","Spain"],["spain","Spain"],["deutschland","Germany"],["germany","Germany"],["portugal","Portugal"],["argentina","Argentina"],["chile","Chile"],["australia","Australia"],["österreich","Austria"],["osterreich","Austria"],["austria","Austria"],["new zealand","New Zealand"],["south africa","South Africa"],["georgia","Georgia"],["greece","Greece"],["hungary","Hungary"],["japan","Japan"],["canada","Canada"],["uruguay","Uruguay"],["united states","USA"],["california","USA"]];
+  for(const [k,v] of COUNTRY_KEYS){ if(t.includes(k)){ out.country=v; break; } }
+  const REGION_KEYS=[["bordeaux","Bordeaux"],["bourgogne","Burgundy"],["burgundy","Burgundy"],["champagne","Champagne"],["alsace","Alsace"],["rhône","Rhône Valley"],["rhone","Rhône Valley"],["loire","Loire Valley"],["provence","Provence"],["languedoc","Languedoc"],["piemonte","Piedmont"],["piedmont","Piedmont"],["toscana","Tuscany"],["tuscany","Tuscany"],["veneto","Veneto"],["sicilia","Sicily"],["sicily","Sicily"],["rioja","Rioja"],["ribera del duero","Ribera del Duero"],["priorat","Priorat"],["rías baixas","Rías Baixas"],["rias baixas","Rías Baixas"],["napa","Napa Valley"],["sonoma","Sonoma"],["willamette","Willamette Valley"],["finger lakes","Finger Lakes"],["mosel","Mosel"],["rheingau","Rheingau"],["pfalz","Pfalz"],["wachau","Wachau"],["douro","Douro"],["alentejo","Alentejo"],["mendoza","Mendoza"],["maipo","Maipo Valley"],["barossa","Barossa Valley"],["marlborough","Marlborough"],["stellenbosch","Stellenbosch"]];
+  for(const [k,v] of REGION_KEYS){ if(t.includes(k)){ out.region=v; break; } }
+  if(out.region&&!out.country){ const r=REGIONS.find(x=>x.n===out.region); if(r) out.country=r.c; }
+  const APPEL_KEYS=[["pauillac","Pauillac"],["margaux","Margaux"],["pomerol","Pomerol"],["saint-émilion","Saint-Émilion"],["saint-emilion","Saint-Émilion"],["saint-julien","Saint-Julien"],["gevrey-chambertin","Gevrey-Chambertin"],["nuits-saint-georges","Nuits-Saint-Georges"],["puligny-montrachet","Puligny-Montrachet"],["meursault","Meursault"],["chablis","Chablis"],["sancerre","Sancerre"],["châteauneuf-du-pape","Châteauneuf-du-Pape"],["chateauneuf-du-pape","Châteauneuf-du-Pape"],["barolo","Barolo"],["barbaresco","Barbaresco"],["brunello di montalcino","Brunello di Montalcino"],["chianti classico","Chianti Classico"],["amarone","Amarone della Valpolicella"],["taurasi","Taurasi"]];
+  for(const [k,v] of APPEL_KEYS){ if(t.includes(k)){ out.appellation=v; break; } }
+  const GRAPE_KEYS=[["pinot noir","Pinot Noir"],["cabernet sauvignon","Cabernet Sauvignon"],["cabernet franc","Cabernet Franc"],["merlot","Merlot"],["syrah","Syrah / Shiraz"],["shiraz","Syrah / Shiraz"],["grenache","Grenache"],["gamay","Gamay"],["nebbiolo","Nebbiolo"],["sangiovese","Sangiovese"],["tempranillo","Tempranillo"],["chardonnay","Chardonnay"],["sauvignon blanc","Sauvignon Blanc"],["riesling","Riesling"],["chenin blanc","Chenin Blanc"],["viognier","Viognier"],["albariño","Albariño"],["albarino","Albariño"],["malbec","Malbec"],["zinfandel","Zinfandel"],["grüner veltliner","Grüner Veltliner"],["gruner veltliner","Grüner Veltliner"],["pinot gris","Pinot Gris"],["gewürztraminer","Gewürztraminer"],["gewurztraminer","Gewürztraminer"],["carmenère","Carmenère"],["carmenere","Carmenère"],["muscat","Muscat"]];
+  for(const [k,v] of GRAPE_KEYS){ if(t.includes(k)){ out.grape=v; break; } }
+  const lines=String(text||"").split(/\r?\n/);
+  for(const ln of lines){
+    if(/château|chateau|domaine|bodega|tenuta|weingut/i.test(ln)){
+      const p=ln.replace(/\s+/g," ").trim();
+      if(p.length>=4&&p.length<=60){ out.producer=p; break; }
+    }
+  }
+  return out;
+}
+async function runScan(file){
+  const wrap=$("scan-status-wrap"), st=$("scan-status");
+  wrap.classList.remove("hidden"); st.textContent="Reading the label…";
+  const shot=await fileToDataURL(file);
+  if(shot) setScanPhoto(shot);
+  try{
+    const T=await loadTesseract();
+    const worker=await T.createWorker("eng");
+    const { data }=await worker.recognize(file);
+    await worker.terminate();
+    const p=parseLabelText(data.text||"");
+    const applied=[];
+    /* A fresh scan replaces the bottle info: wipe first, then fill what was detected. */
+    sel.country=""; sel.region=""; sel.appellation=""; sel.producer=""; sel.wine=""; sel.vintage=""; sel.grape="";
+    if(p.country){ sel.country=p.country; applied.push("country: "+p.country); }
+    if(p.region){ sel.region=p.region; applied.push("region: "+p.region); }
+    if(p.appellation){ sel.appellation=p.appellation; applied.push("appellation: "+p.appellation); }
+    if(p.producer){ sel.producer=p.producer; applied.push("producer: "+p.producer); }
+    if(p.vintage){ sel.vintage=p.vintage; applied.push("vintage: "+p.vintage); }
+    if(p.grape){ sel.grape=p.grape; applied.push("grape: "+p.grape); }
+    sel.customCountry=!!sel.country&&!COUNTRIES.includes(sel.country);
+    sel.customRegion=!!sel.region&&!REGIONS.some(r=>r.n===sel.region);
+    sel.customGrape=!!sel.grape&&!GRAPES.includes(sel.grape);
+    applySelToForm(); onSelChange();
+    st.textContent=applied.length?("Filled from the label — "+applied.join(" · ")+". Check and fix anything off."):"Couldn't read the label clearly — type the details in manually.";
+  }catch(e){
+    st.textContent="Scan failed — type the details in manually.";
+  }
+}
+
+/* ================= init ================= */
+(function init(){
+  loadSel();
+  const alphaN=(a,b)=>a.n.localeCompare(b.n);
+  const pinOther=(a,b)=>a==="Other / custom"?1:b==="Other / custom"?-1:a.localeCompare(b);
+  comboCountry=makeCombo("in-country","list-country",[...COUNTRIES].sort(pinOther),(v,c)=>{ sel.country=v; sel.customCountry=c; syncClearBtns(); onSelChange(); });
+  comboRegion=makeCombo("in-region","list-region",REGIONS.map(r=>({n:r.n,sub:r.c})).sort(alphaN),(v,c)=>{
+    sel.region=v; sel.customRegion=c;
+    const known=REGIONS.find(r=>r.n===v);
+    if(known){ sel.country=known.c; sel.customCountry=false; comboCountry.set(sel.country); }
+    syncClearBtns(); onSelChange();
+  });
+  comboGrape=makeCombo("in-grape","list-grape",[...GRAPES].sort(pinOther),(v,c)=>{ sel.grape=v; sel.customGrape=c; onSelChange(); });
+  [["in-appellation","appellation"],["in-producer","producer"],["in-wine","wine"],["in-vintage","vintage"],["in-decant","decant"],["in-temp","temp"]].forEach(([id,key])=>{
+    const el=$(id); if(!el) return;
+    el.addEventListener("input",()=>{ sel[key]=el.value.trim(); onSelChange(); });
+    selectAllOnFocus(el);
+  });
+  ["in-country","in-region"].forEach(id=>{
+    const el=$(id);
+    el.addEventListener("input",syncClearBtns);
+    el.addEventListener("blur",()=>setTimeout(syncClearBtns,200));
+  });
+  const cb=$("clear-country"); if(cb) cb.onclick=()=>{ sel.country=""; sel.customCountry=false; comboCountry.set(""); syncClearBtns(); onSelChange(); };
+  const crb=$("clear-region"); if(crb) crb.onclick=()=>{ sel.region=""; sel.customRegion=false; comboRegion.set(""); syncClearBtns(); onSelChange(); };
+  $("scan-btn").onclick=()=>$("scan-file").click();
+  $("scan-file").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) runScan(f); e.target.value=""; });
+  $("clear-btn").onclick=()=>{ if(confirm("Clear all bottle fields?")) clearAll(); };
+  $("save-btn").onclick=saveWine;
+  const clb=$("clear-log-btn");
+  if(clb) clb.onclick=()=>{ if(confirm("Delete ALL wine log entries? This cannot be undone.")){ setLog([]); renderLog(); } };
+  $("tab-taste").onclick=()=>switchTab("taste");
+  $("tab-log").onclick=()=>switchTab("log");
+  buildStars(); paintStars();
+  buildChips("chips-aroma",AROMAS,pickedAroma);
+  buildChips("chips-flavor",FLAVORS,pickedFlavor);
+  buildDims();
+  setupPhoto();
+  applySelToForm();
+  renderLog();
+})();
+</script>
+</body>
+</html>
