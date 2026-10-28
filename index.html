@@ -107,7 +107,7 @@ textarea:focus{ outline:none; border-color:var(--acc); background:#fff; }
       <input type="file" id="scan-file" accept="image/*" class="hidden">
       <div class="field hidden" id="scan-status-wrap"><label>Scan result</label><div id="scan-status" style="font-size:14px;color:var(--sub)"></div></div>
       <div id="scan-photo-wrap" class="hidden" style="margin-bottom:12px">
-        <img id="scan-photo-preview" alt="Label photo" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px">
+        <img id="scan-photo-preview" alt="Label photo" style="width:100%;height:auto;max-height:340px;object-fit:contain;background:#f4f1ea;border-radius:10px">
         <div style="font-size:12px;color:var(--sub);margin-top:4px">This label photo will be saved with the log entry.</div>
         <div><button class="btn ghost small" id="scan-photo-remove" type="button" style="width:auto;margin-top:6px">Remove photo</button></div>
       </div>
@@ -638,18 +638,34 @@ async function runScan(file){
   try{
     const T=await loadTesseract();
     const worker=await T.createWorker(["eng","fra","spa","ita","deu"]);
+    const ocrParse=async img=>{
+      try{ const r=await worker.recognize(img); return parseLabelText((r.data&&r.data.text)||""); }
+      catch(e){ return {}; }
+    };
+    const mergeInto=(p,q)=>{ ["country","region","appellation","producer","vintage","grape"].forEach(k=>{ if(!p[k]&&q&&q[k]) p[k]=q[k]; }); };
+    const bandCanvas=(cv,i,n)=>{
+      const h=cv.height/n, ov=h*0.18;
+      const y0=Math.max(0,Math.round(i*h-ov)), y1=Math.min(cv.height,Math.round((i+1)*h+ov));
+      const out=document.createElement("canvas"); out.width=cv.width; out.height=y1-y0;
+      out.getContext("2d").drawImage(cv,0,y0,cv.width,y1-y0,0,0,cv.width,y1-y0);
+      return out;
+    };
     const ocrImg=await fileToOCRImage(file,false);
-    const { data }=await worker.recognize(ocrImg||file);
-    let p=parseLabelText(data.text||"");
+    let p=await ocrParse(ocrImg||file);
+    /* Small label type at the top/bottom of a full-bottle shot often fails
+       in one whole-image pass — re-read the frame in horizontal bands,
+       where the same type is relatively larger, and merge what is found. */
+    if((!p.producer||!p.appellation)&&ocrImg){
+      for(let i=0;i<3;i++){
+        mergeInto(p, await ocrParse(bandCanvas(ocrImg,i,3)));
+        if(p.producer&&p.appellation) break;
+      }
+    }
     if(!p.producer&&!p.appellation&&!p.region){
-      /* Nearly nothing read — retry on the inverted image (dark labels). */
+      /* Still nearly nothing — retry on the inverted image (dark labels). */
       try{
         const inv=await fileToOCRImage(file,true);
-        if(inv){
-          const r2=await worker.recognize(inv);
-          const p2=parseLabelText((r2.data&&r2.data.text)||"");
-          ["country","region","appellation","producer","vintage","grape"].forEach(k=>{ if(!p[k]&&p2[k]) p[k]=p2[k]; });
-        }
+        if(inv) mergeInto(p, await ocrParse(inv));
       }catch(e){}
     }
     await worker.terminate();
