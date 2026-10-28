@@ -123,10 +123,12 @@ textarea:focus{ outline:none; border-color:var(--acc); background:#fff; }
     </div>
     <div class="card">
       <h2>Serving</h2>
+      <div id="serve-body" style="margin-bottom:10px"></div>
       <div style="display:flex;gap:10px">
-        <div class="field" style="flex:1"><label>Decanting (min) — optional</label><input id="in-decant" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 60"></div>
-        <div class="field" style="flex:1"><label>Serving temp (°C) — optional</label><input id="in-temp" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 16"></div>
+        <div class="field" style="flex:1"><label>Decanting (min)</label><input id="in-decant" type="text" inputmode="numeric" autocomplete="off" placeholder="Auto"></div>
+        <div class="field" style="flex:1"><label>Serving temp (°C)</label><input id="in-temp" type="text" inputmode="decimal" autocomplete="off" placeholder="Auto"></div>
       </div>
+      <div id="serve-pairing"></div>
     </div>
     <div class="card" id="logform-card">
       <h2>Log this wine</h2>
@@ -219,7 +221,7 @@ function makeCombo(inputId, listId, options, onPick){
 /* ================= selection persistence ================= */
 function saveSel(){ try{ localStorage.setItem(LS_SEL,JSON.stringify(sel)); }catch(e){} }
 function loadSel(){ try{ const s=JSON.parse(localStorage.getItem(LS_SEL)||"null"); if(s) Object.assign(sel,s); }catch(e){} }
-function onSelChange(){ saveSel(); }
+function onSelChange(){ saveSel(); if(typeof renderServing==="function") renderServing(); }
 function syncClearBtns(){
   const cc=$("clear-country"); if(cc) cc.classList.toggle("hidden",!$("in-country").value);
   const cr=$("clear-region"); if(cr) cr.classList.toggle("hidden",!$("in-region").value);
@@ -368,6 +370,7 @@ function loadEntry(e){
   sel.customRegion=!!sel.region&&!REGIONS.some(r=>r.n===sel.region);
   sel.customGrape=!!sel.grape&&!GRAPES.includes(sel.grape);
   if(e.photo) setScanPhoto(e.photo); else clearScanPhoto();
+  serveLock=true;
   applySelToForm(); onSelChange(); vib(10);
   switchTab("taste");
   window.scrollTo({top:0,behavior:"smooth"});
@@ -437,6 +440,120 @@ function renderLog(){
   });
 }
 
+/* ================= serving recommendations =================
+   Style is read from grape / appellation / region; decanting also
+   adjusts for the bottle's age. Suggestions auto-fill the two
+   Serving inputs (editable); loading a past entry locks auto-fill
+   so its recorded values are not overwritten. */
+let serveSig="", serveLock=false, autoDec="", autoTemp="";
+const SERVE_PROFILES={
+ pinot:{decant:[20,30],temp:[14,16],pairings:["Roast duck","Mushroom risotto","Grilled salmon","Roast chicken","Charcuterie"]},
+ gamay:{decant:[0,15],temp:[13,15],pairings:["Charcuterie","Roast chicken","Comté cheese","Grilled sausages"]},
+ nebbiolo:{decant:[90,120],temp:[16,18],pairings:["Truffle pasta","Osso buco","Roast lamb","Braised beef","Aged Parmesan"]},
+ cabernet:{decant:[60,120],temp:[16,18],pairings:["Ribeye steak","Lamb chops","Short ribs","Aged cheddar"]},
+ syrah:{decant:[45,90],temp:[16,18],pairings:["Grilled lamb","BBQ brisket","Duck breast","Smoked meats"]},
+ sangiovese:{decant:[45,60],temp:[16,18],pairings:["Tomato pasta","Wood-fired pizza","Bistecca","Lasagna"]},
+ tempranillo:{decant:[45,90],temp:[16,18],pairings:["Jamón ibérico","Roast lamb","Manchego","Grilled chorizo"]},
+ merlot:{decant:[30,60],temp:[15,17],pairings:["Roast pork","Mushroom pasta","Gouda","Meatloaf"]},
+ grenache:{decant:[30,45],temp:[15,17],pairings:["Herb roast chicken","Paella","Grilled tuna","Ratatouille"]},
+ malbec:{decant:[45,60],temp:[16,18],pairings:["Grilled steak & chimichurri","Empanadas","Blue-cheese burger"]},
+ zinfandel:{decant:[30,45],temp:[16,18],pairings:["BBQ ribs","Pulled pork","Burgers","Spicy sausage"]},
+ cabfranc:{decant:[30,45],temp:[15,17],pairings:["Pork tenderloin","Grilled vegetables","Goat cheese","Lentil dishes"]},
+ carmenere:{decant:[30,60],temp:[16,18],pairings:["Grilled steak","Hard cheese","Spicy dishes"]},
+ chardonnay:{decant:[0,15],temp:[10,12],pairings:["Lobster","Roast chicken","Creamy pasta","Buttered scallops"]},
+ sauvblanc:{decant:[0,0],temp:[8,10],pairings:["Goat cheese","Oysters","Grilled shrimp","Green salads"]},
+ riesling:{decant:[0,0],temp:[8,10],pairings:["Spicy Thai","Sushi","Pork schnitzel","Spring rolls"]},
+ albarino:{decant:[0,0],temp:[8,10],pairings:["Shellfish","Ceviche","Grilled octopus","Sushi"]},
+ chenin:{decant:[0,15],temp:[9,11],pairings:["Sushi","Goat cheese","Roast pork","Thai curry"]},
+ viognier:{decant:[0,0],temp:[10,12],pairings:["Lobster","Thai curry","Roast chicken"]},
+ pinotgris:{decant:[0,0],temp:[9,11],pairings:["Sushi","Grilled fish","Light pasta","Salads"]},
+ gewurz:{decant:[0,0],temp:[9,11],pairings:["Spicy Asian","Muenster","Foie gras","Thai curry"]},
+ muscat:{decant:[0,0],temp:[8,10],pairings:["Fruit desserts","Blue cheese","Spicy dishes"]},
+ gruner:{decant:[0,0],temp:[8,10],pairings:["Sushi","Asparagus","Schnitzel","Salads"]},
+ xarello:{decant:[0,0],temp:[8,10],pairings:["Shellfish","Grilled fish","Tapas"]},
+ sparkling:{decant:[0,0],temp:[6,8],pairings:["Oysters","Fried chicken","Sushi","French fries"]}
+};
+const TANNIC_STYLES=["nebbiolo","cabernet","syrah","sangiovese","tempranillo","malbec","carmenere"];
+function wineStyle(){
+  const g=(sel.grape||"").toLowerCase(), a=(sel.appellation||"").toLowerCase(),
+        r=(sel.region||"").toLowerCase(), w=(sel.wine||"").toLowerCase();
+  if(r.includes("champagne")||a.includes("champagne")||/brut|crémant|cremant|cava|prosecco|sekt/.test(w)) return "sparkling";
+  if(g.includes("pinot noir")||a.includes("gevrey")||a.includes("nuits")||a.includes("pommard")||a.includes("volnay")||a.includes("morey")||a.includes("chambolle")||a.includes("vosne")||a.includes("beaune")) return "pinot";
+  if(g.includes("gamay")||a.includes("morgon")||a.includes("fleurie")||a.includes("beaujolais")) return "gamay";
+  if(g.includes("nebbiolo")||a.includes("barolo")||a.includes("barbaresco")) return "nebbiolo";
+  if(g.includes("cabernet sauvignon")||a.includes("pauillac")||a.includes("margaux")||a.includes("saint-julien")||a.includes("saint-émilion")||a.includes("saint-emilion")||a.includes("pomerol")) return "cabernet";
+  if(g.includes("syrah")||g.includes("shiraz")||a.includes("châteauneuf")||a.includes("chateauneuf")) return "syrah";
+  if(g.includes("sangiovese")||a.includes("brunello")||a.includes("chianti")) return "sangiovese";
+  if(g.includes("tempranillo")||r.includes("rioja")||r.includes("ribera")) return "tempranillo";
+  if(g.includes("merlot")) return "merlot";
+  if(g.includes("grenache")) return "grenache";
+  if(g.includes("malbec")) return "malbec";
+  if(g.includes("zinfandel")) return "zinfandel";
+  if(g.includes("cabernet franc")) return "cabfranc";
+  if(g.includes("carmenère")||g.includes("carmenere")) return "carmenere";
+  if(g.includes("chardonnay")||a.includes("chablis")||a.includes("meursault")||a.includes("montrachet")) return "chardonnay";
+  if(g.includes("sauvignon blanc")||a.includes("sancerre")) return "sauvblanc";
+  if(g.includes("riesling")) return "riesling";
+  if(g.includes("albariño")||g.includes("albarino")) return "albarino";
+  if(g.includes("chenin")) return "chenin";
+  if(g.includes("viognier")) return "viognier";
+  if(g.includes("pinot gris")) return "pinotgris";
+  if(g.includes("gewürz")||g.includes("gewurz")) return "gewurz";
+  if(g.includes("muscat")) return "muscat";
+  if(g.includes("grüner")||g.includes("gruner")) return "gruner";
+  if(g.includes("xarel")) return "xarello";
+  return "";
+}
+function computeProfile(){
+  const style=wineStyle(); if(!style) return null;
+  const base=SERVE_PROFILES[style]; if(!base) return null;
+  let decant=base.decant.slice(), note="";
+  const yr=parseInt(sel.vintage,10);
+  if(!isNaN(yr)){
+    const age=2026-yr;
+    if(TANNIC_STYLES.includes(style)){
+      if(age>=4&&age<=7) decant=[60,90];
+      else if(age>=8&&age<=12) decant=[30,60];
+      else if(age>12){ decant=[15,30]; note="Older bottle — decant gently off the sediment, and taste as you go."; }
+    }else if(style==="pinot"){
+      if(age>=4&&age<=8) decant=[15,30];
+      else if(age>8){ decant=[10,20]; note="Older Pinot — keep it gentle; a long decant fades it."; }
+    }
+  }
+  if(!note&&style==="chardonnay"&&decant[1]>0) note="No decant needed — just open it a little ahead.";
+  if(!note&&decant[0]===0&&decant[1]===0) note="No decant needed — pour straight from the bottle.";
+  const r5=x=>Math.round(x/5)*5;
+  return { style, decant, temp:base.temp, pairings:base.pairings, note,
+    decantSet:String(r5((decant[0]+decant[1])/2)), tempSet:String(Math.round((base.temp[0]+base.temp[1])/2)) };
+}
+function renderServing(){
+  const body=$("serve-body"), pair=$("serve-pairing");
+  if(!body||!pair) return;
+  const p=computeProfile();
+  if(!p){
+    body.innerHTML=`<div style="font-size:14px;color:var(--sub)">Scan a label or pick a grape — decanting, temperature and pairing suggestions appear here.</div>`;
+    pair.innerHTML=""; return;
+  }
+  const decTxt=(p.decant[0]===0&&p.decant[1]===0)?"None":(p.decant[0]===0?("0–"+p.decant[1]+" min"):(p.decant[0]+"–"+p.decant[1]+" min"));
+  body.innerHTML=
+    `<div class="spec"><span>Decanting</span><b>${decTxt}</b></div>`+
+    `<div class="spec"><span>Serving temp</span><b>${p.temp[0]}–${p.temp[1]}°C</b></div>`+
+    (p.note?`<div style="font-size:13px;color:var(--sub);margin-top:8px">${esc(p.note)}</div>`:"");
+  pair.innerHTML=`<label style="display:block;font-size:13px;color:var(--sub);margin:10px 0 6px">Pairs well with</label><div class="chips" style="margin:0">`+
+    p.pairings.map(x=>`<span style="border:1px solid var(--line);background:#fafafa;border-radius:20px;padding:8px 14px;font-size:14px">${esc(x)}</span>`).join("")+`</div>`;
+  if(serveLock) return;
+  const sig=[sel.grape,sel.appellation,sel.region,sel.vintage].join("|");
+  const di=$("in-decant"), ti=$("in-temp");
+  if(sig!==serveSig){
+    serveSig=sig;
+    if(di){ di.value=p.decantSet; sel.decant=p.decantSet; autoDec=p.decantSet; }
+    if(ti){ ti.value=p.tempSet; sel.temp=p.tempSet; autoTemp=p.tempSet; }
+  }else{
+    if(di&&(di.value.trim()===""||di.value.trim()===autoDec)){ di.value=p.decantSet; sel.decant=p.decantSet; autoDec=p.decantSet; }
+    if(ti&&(ti.value.trim()===""||ti.value.trim()===autoTemp)){ ti.value=p.tempSet; sel.temp=p.tempSet; autoTemp=p.tempSet; }
+  }
+}
+
 /* ================= label scanner (OCR) ================= */
 function loadTesseract(){
   return new Promise((resolve,reject)=>{
@@ -457,21 +574,34 @@ function parseLabelText(text){
   const REGION_KEYS=[["bordeaux","Bordeaux"],["bourgogne","Burgundy"],["burgundy","Burgundy"],["champagne","Champagne"],["alsace","Alsace"],["rhône","Rhône Valley"],["rhone","Rhône Valley"],["loire","Loire Valley"],["provence","Provence"],["languedoc","Languedoc"],["piemonte","Piedmont"],["piedmont","Piedmont"],["toscana","Tuscany"],["tuscany","Tuscany"],["veneto","Veneto"],["sicilia","Sicily"],["sicily","Sicily"],["rioja","Rioja"],["ribera del duero","Ribera del Duero"],["priorat","Priorat"],["rías baixas","Rías Baixas"],["rias baixas","Rías Baixas"],["napa","Napa Valley"],["sonoma","Sonoma"],["willamette","Willamette Valley"],["finger lakes","Finger Lakes"],["mosel","Mosel"],["rheingau","Rheingau"],["pfalz","Pfalz"],["wachau","Wachau"],["douro","Douro"],["alentejo","Alentejo"],["mendoza","Mendoza"],["maipo","Maipo Valley"],["barossa","Barossa Valley"],["marlborough","Marlborough"],["stellenbosch","Stellenbosch"]];
   for(const [k,v] of REGION_KEYS){ if(t.includes(k)){ out.region=v; break; } }
   if(out.region&&!out.country){ const r=REGIONS.find(x=>x.n===out.region); if(r) out.country=r.c; }
-  const APPEL_KEYS=[["pauillac","Pauillac"],["margaux","Margaux"],["pomerol","Pomerol"],["saint-émilion","Saint-Émilion"],["saint-emilion","Saint-Émilion"],["saint-julien","Saint-Julien"],["gevrey-chambertin","Gevrey-Chambertin"],["nuits-saint-georges","Nuits-Saint-Georges"],["puligny-montrachet","Puligny-Montrachet"],["meursault","Meursault"],["chablis","Chablis"],["sancerre","Sancerre"],["châteauneuf-du-pape","Châteauneuf-du-Pape"],["chateauneuf-du-pape","Châteauneuf-du-Pape"],["barolo","Barolo"],["barbaresco","Barbaresco"],["brunello di montalcino","Brunello di Montalcino"],["chianti classico","Chianti Classico"],["amarone","Amarone della Valpolicella"],["taurasi","Taurasi"]];
+  const APPEL_KEYS=[["pauillac","Pauillac"],["margaux","Margaux"],["pomerol","Pomerol"],["saint-émilion","Saint-Émilion"],["saint-emilion","Saint-Émilion"],["saint-julien","Saint-Julien"],["gevrey-chambertin","Gevrey-Chambertin"],["nuits-saint-georges","Nuits-Saint-Georges"],["côte de nuits-villages","Côte de Nuits-Villages"],["cote de nuits-villages","Côte de Nuits-Villages"],["côte de nuits","Côte de Nuits-Villages"],["cote de nuits","Côte de Nuits-Villages"],["morey-saint-denis","Morey-Saint-Denis"],["chambolle-musigny","Chambolle-Musigny"],["vosne-romanée","Vosne-Romanée"],["vosne-romanee","Vosne-Romanée"],["pommard","Pommard"],["volnay","Volnay"],["beaune","Beaune"],["puligny-montrachet","Puligny-Montrachet"],["chassagne-montrachet","Chassagne-Montrachet"],["meursault","Meursault"],["saint-aubin","Saint-Aubin"],["chablis","Chablis"],["pouilly-fuissé","Pouilly-Fuissé"],["pouilly-fuisse","Pouilly-Fuissé"],["morgon","Morgon"],["fleurie","Fleurie"],["moulin-à-vent","Moulin-à-Vent"],["sancerre","Sancerre"],["châteauneuf-du-pape","Châteauneuf-du-Pape"],["chateauneuf-du-pape","Châteauneuf-du-Pape"],["barolo","Barolo"],["barbaresco","Barbaresco"],["brunello di montalcino","Brunello di Montalcino"],["chianti classico","Chianti Classico"],["amarone","Amarone della Valpolicella"],["taurasi","Taurasi"]];
   for(const [k,v] of APPEL_KEYS){ if(t.includes(k)){ out.appellation=v; break; } }
   const GRAPE_KEYS=[["pinot noir","Pinot Noir"],["cabernet sauvignon","Cabernet Sauvignon"],["cabernet franc","Cabernet Franc"],["merlot","Merlot"],["syrah","Syrah / Shiraz"],["shiraz","Syrah / Shiraz"],["grenache","Grenache"],["gamay","Gamay"],["nebbiolo","Nebbiolo"],["sangiovese","Sangiovese"],["tempranillo","Tempranillo"],["chardonnay","Chardonnay"],["sauvignon blanc","Sauvignon Blanc"],["riesling","Riesling"],["chenin blanc","Chenin Blanc"],["viognier","Viognier"],["albariño","Albariño"],["albarino","Albariño"],["malbec","Malbec"],["zinfandel","Zinfandel"],["grüner veltliner","Grüner Veltliner"],["gruner veltliner","Grüner Veltliner"],["pinot gris","Pinot Gris"],["gewürztraminer","Gewürztraminer"],["gewurztraminer","Gewürztraminer"],["carmenère","Carmenère"],["carmenere","Carmenère"],["muscat","Muscat"]];
   for(const [k,v] of GRAPE_KEYS){ if(t.includes(k)){ out.grape=v; break; } }
+  /* Appellation implies region (and usually grape): fill what is still empty. */
+  const APPEL_INFO={"Côte de Nuits-Villages":["Burgundy","Pinot Noir"],"Gevrey-Chambertin":["Burgundy","Pinot Noir"],"Nuits-Saint-Georges":["Burgundy","Pinot Noir"],"Morey-Saint-Denis":["Burgundy","Pinot Noir"],"Chambolle-Musigny":["Burgundy","Pinot Noir"],"Vosne-Romanée":["Burgundy","Pinot Noir"],"Pommard":["Burgundy","Pinot Noir"],"Volnay":["Burgundy","Pinot Noir"],"Beaune":["Burgundy","Pinot Noir"],"Chablis":["Burgundy","Chardonnay"],"Meursault":["Burgundy","Chardonnay"],"Puligny-Montrachet":["Burgundy","Chardonnay"],"Chassagne-Montrachet":["Burgundy","Chardonnay"],"Saint-Aubin":["Burgundy","Chardonnay"],"Pouilly-Fuissé":["Burgundy","Chardonnay"],"Morgon":["Burgundy","Gamay"],"Fleurie":["Burgundy","Gamay"],"Moulin-à-Vent":["Burgundy","Gamay"],"Sancerre":["Loire Valley","Sauvignon Blanc"],"Barolo":["Piedmont","Nebbiolo"],"Barbaresco":["Piedmont","Nebbiolo"],"Brunello di Montalcino":["Tuscany","Sangiovese"],"Chianti Classico":["Tuscany","Sangiovese"],"Pauillac":["Bordeaux",""],"Margaux":["Bordeaux",""],"Pomerol":["Bordeaux",""],"Saint-Émilion":["Bordeaux",""],"Saint-Julien":["Bordeaux",""],"Châteauneuf-du-Pape":["Rhône Valley",""],"Amarone della Valpolicella":["Veneto",""]};
+  if(out.appellation&&APPEL_INFO[out.appellation]){
+    const inf=APPEL_INFO[out.appellation];
+    if(inf[0]&&!out.region) out.region=inf[0];
+    if(inf[1]&&!out.grape) out.grape=inf[1];
+    if(out.region&&!out.country){ const rr=REGIONS.find(x=>x.n===out.region); if(rr) out.country=rr.c; }
+  }
   const lines=String(text||"").split(/\r?\n/);
   for(const ln of lines){
     if(/château|chateau|domaine|bodega|tenuta|weingut/i.test(ln)){
-      const p=ln.replace(/\s+/g," ").trim();
+      let p=ln.replace(/\s+/g," ").trim();
+      if(p===p.toUpperCase()&&/[A-ZÀ-Þ]/.test(p)){
+        p=p.toLowerCase().replace(/(^|[\s\-'])(\S)/g,(m,pre,ch)=>pre+ch.toUpperCase());
+      }
       if(p.length>=4&&p.length<=60){ out.producer=p; break; }
     }
   }
   return out;
 }
-/* Upscale + grayscale/contrast pass so stylised label type reads better. */
-function fileToOCRImage(file){
+/* Upscale + grayscale/contrast pass so stylised label type reads better.
+   invert=true produces the negative — dark labels with light/foil type
+   often read far better inverted (OCR prefers dark text on light). */
+function fileToOCRImage(file, invert){
   return new Promise(res=>{
     const img=new Image();
     img.onload=()=>{
@@ -481,6 +611,13 @@ function fileToOCRImage(file){
       const ctx=cv.getContext("2d");
       try{ ctx.filter="grayscale(1) contrast(1.35) brightness(1.05)"; }catch(e){}
       ctx.drawImage(img,0,0,cv.width,cv.height);
+      if(invert){
+        try{
+          const id=ctx.getImageData(0,0,cv.width,cv.height), d=id.data;
+          for(let i=0;i<d.length;i+=4){ d[i]=255-d[i]; d[i+1]=255-d[i+1]; d[i+2]=255-d[i+2]; }
+          ctx.putImageData(id,0,0);
+        }catch(e){}
+      }
       URL.revokeObjectURL(img.src);
       res(cv);
     };
@@ -494,16 +631,28 @@ async function runScan(file){
   /* First scan of a bottle starts fresh; further scans (e.g. the back label)
      only fill fields that are still empty. A bottle "session" ends on Clear/save. */
   const merge=!!pendingPhoto;
+  serveLock=false;
   st.textContent=merge?"Reading the next label…":"Reading the label…";
   const shot=await fileToDataURL(file);
   if(shot&&!merge) setScanPhoto(shot);
   try{
     const T=await loadTesseract();
     const worker=await T.createWorker(["eng","fra","spa","ita","deu"]);
-    const ocrImg=await fileToOCRImage(file);
+    const ocrImg=await fileToOCRImage(file,false);
     const { data }=await worker.recognize(ocrImg||file);
+    let p=parseLabelText(data.text||"");
+    if(!p.producer&&!p.appellation&&!p.region){
+      /* Nearly nothing read — retry on the inverted image (dark labels). */
+      try{
+        const inv=await fileToOCRImage(file,true);
+        if(inv){
+          const r2=await worker.recognize(inv);
+          const p2=parseLabelText((r2.data&&r2.data.text)||"");
+          ["country","region","appellation","producer","vintage","grape"].forEach(k=>{ if(!p[k]&&p2[k]) p[k]=p2[k]; });
+        }
+      }catch(e){}
+    }
     await worker.terminate();
-    const p=parseLabelText(data.text||"");
     const applied=[];
     if(!merge){ sel.country=""; sel.region=""; sel.appellation=""; sel.producer=""; sel.wine=""; sel.vintage=""; sel.grape=""; }
     const fill=(key,label)=>{ if(p[key]&&(!merge||!sel[key])){ sel[key]=p[key]; applied.push(label+": "+p[key]); } };
@@ -515,7 +664,7 @@ async function runScan(file){
     applySelToForm(); onSelChange();
     st.textContent=applied.length
       ?((merge?"Merged — added ":"Filled from the label — ")+applied.join(" · ")+". Check and fix anything off."+(merge?"":" Tip: the back label usually lists producer, origin and grape — scan it too; extra scans only fill empty fields."))
-      :"Couldn't read this label clearly — try the back label, or type the details in manually.";
+      :(merge?"Nothing new to add — everything readable on this label is already filled.":"Couldn't read this label clearly — try the back label, or type the details in manually.");
   }catch(e){
     st.textContent="Scan failed — type the details in manually.";
   }
@@ -526,17 +675,17 @@ async function runScan(file){
   loadSel();
   const alphaN=(a,b)=>a.n.localeCompare(b.n);
   const pinOther=(a,b)=>a==="Other / custom"?1:b==="Other / custom"?-1:a.localeCompare(b);
-  comboCountry=makeCombo("in-country","list-country",[...COUNTRIES].sort(pinOther),(v,c)=>{ sel.country=v; sel.customCountry=c; syncClearBtns(); onSelChange(); });
+  comboCountry=makeCombo("in-country","list-country",[...COUNTRIES].sort(pinOther),(v,c)=>{ serveLock=false; sel.country=v; sel.customCountry=c; syncClearBtns(); onSelChange(); });
   comboRegion=makeCombo("in-region","list-region",REGIONS.map(r=>({n:r.n,sub:r.c})).sort(alphaN),(v,c)=>{
-    sel.region=v; sel.customRegion=c;
+    serveLock=false; sel.region=v; sel.customRegion=c;
     const known=REGIONS.find(r=>r.n===v);
     if(known){ sel.country=known.c; sel.customCountry=false; comboCountry.set(sel.country); }
     syncClearBtns(); onSelChange();
   });
-  comboGrape=makeCombo("in-grape","list-grape",[...GRAPES].sort(pinOther),(v,c)=>{ sel.grape=v; sel.customGrape=c; onSelChange(); });
+  comboGrape=makeCombo("in-grape","list-grape",[...GRAPES].sort(pinOther),(v,c)=>{ serveLock=false; sel.grape=v; sel.customGrape=c; onSelChange(); });
   [["in-appellation","appellation"],["in-producer","producer"],["in-wine","wine"],["in-vintage","vintage"],["in-decant","decant"],["in-temp","temp"]].forEach(([id,key])=>{
     const el=$(id); if(!el) return;
-    el.addEventListener("input",()=>{ sel[key]=el.value.trim(); onSelChange(); });
+    el.addEventListener("input",()=>{ sel[key]=el.value.trim(); if(key!=="decant"&&key!=="temp") serveLock=false; onSelChange(); });
     selectAllOnFocus(el);
   });
   ["in-country","in-region"].forEach(id=>{
@@ -560,6 +709,7 @@ async function runScan(file){
   buildDims();
   setupPhoto();
   applySelToForm();
+  renderServing();
   renderLog();
 })();
 </script>
