@@ -84,6 +84,25 @@ textarea:focus{ outline:none; border-color:var(--acc); background:#fff; }
 /* brew timer overlay */
 #brew-timer{ position:fixed; inset:0; z-index:100; background:var(--bg); display:flex; flex-direction:column; padding:calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 20px); }
 #brew-timer 100%{ background:var(--card); } }
+/* label camera with guide frame */
+#cam-wrap{ position:fixed; inset:0; z-index:110; background:#000; }
+#cam-video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+#cam-hint{ position:absolute; left:0; right:0; top:calc(env(safe-area-inset-top) + 22px); text-align:center; color:#fff; font-size:17px; font-weight:600; padding:0 24px; text-shadow:0 1px 8px rgba(0,0,0,.6); }
+#cam-hint .sub{ font-size:13px; font-weight:400; color:rgba(255,255,255,.85); margin-top:4px; }
+#cam-frame{ position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); width:min(92vw,540px); aspect-ratio:4/3; max-height:58vh; border:2px solid rgba(255,255,255,.95); border-radius:12px; box-shadow:0 0 0 9999px rgba(0,0,0,.55); pointer-events:none; }
+#cam-frame .grid{ position:absolute; background:rgba(255,255,255,.35); }
+#cam-frame .gl-v{ top:0; bottom:0; width:1px; }
+#cam-frame .gl-h{ left:0; right:0; height:1px; }
+#cam-frame .cnr{ position:absolute; width:22px; height:22px; border:0 solid #fff; }
+#cam-frame .tl{ left:-2px; top:-2px; border-left-width:4px; border-top-width:4px; border-top-left-radius:12px; }
+#cam-frame .tr{ right:-2px; top:-2px; border-right-width:4px; border-top-width:4px; border-top-right-radius:12px; }
+#cam-frame .bl{ left:-2px; bottom:-2px; border-left-width:4px; border-bottom-width:4px; border-bottom-left-radius:12px; }
+#cam-frame .br{ right:-2px; bottom:-2px; border-right-width:4px; border-bottom-width:4px; border-bottom-right-radius:12px; }
+#cam-bar{ position:absolute; left:0; right:0; bottom:0; padding:14px 22px calc(env(safe-area-inset-bottom) + 18px); display:flex; align-items:center; justify-content:space-between; }
+.cam-side{ border:0; background:rgba(255,255,255,.16); color:#fff; font-size:15px; font-weight:600; padding:10px 18px; border-radius:20px; cursor:pointer; min-width:84px; }
+.cam-side:active{ background:rgba(255,255,255,.3); }
+#cam-shutter{ width:72px; height:72px; border-radius:50%; border:4px solid #fff; background:rgba(255,255,255,.25); cursor:pointer; padding:0; }
+#cam-shutter:active{ transform:scale(.93); background:#fff; }
 /* photo lightbox */
 #photo-view{ position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.93); display:flex; align-items:center; justify-content:center; padding:16px; }
 #photo-view.pv-hidden{ display:none; }
@@ -154,6 +173,20 @@ textarea:focus{ outline:none; border-color:var(--acc); background:#fff; }
   </div>
 </main>
 <div id="photo-view" class="pv-hidden"><img id="photo-view-img" alt="Wine photo"></div>
+<div id="cam-wrap" class="hidden">
+  <video id="cam-video" autoplay playsinline muted></video>
+  <div id="cam-hint">Fit the whole label inside the frame<div class="sub">Move closer until the label fills the frame — bigger type reads better.</div></div>
+  <div id="cam-frame">
+    <span class="grid gl-v" style="left:33.33%"></span><span class="grid gl-v" style="left:66.66%"></span>
+    <span class="grid gl-h" style="top:33.33%"></span><span class="grid gl-h" style="top:66.66%"></span>
+    <span class="cnr tl"></span><span class="cnr tr"></span><span class="cnr bl"></span><span class="cnr br"></span>
+  </div>
+  <div id="cam-bar">
+    <button type="button" id="cam-library" class="cam-side">Library</button>
+    <button type="button" id="cam-shutter" aria-label="Take photo"></button>
+    <button type="button" id="cam-cancel" class="cam-side">Cancel</button>
+  </div>
+</div>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -569,12 +602,18 @@ function parseLabelText(text){
   const t=text.toLowerCase();
   const out={country:"",region:"",appellation:"",producer:"",wine:"",vintage:"",grape:""};
   /* Vintage: the most frequently read year across all passes wins —
-     single passes misread digits (2023 -> 2025), votes cancel that out. */
-  const years=t.match(/\b(?:19\d{2}|20\d{2})\b/g)||[];
-  if(years.length){
-    const yc={}; years.forEach(y=>{ yc[y]=(yc[y]||0)+1; });
-    out.vintage=Object.keys(yc).sort((a,b)=>yc[b]-yc[a])[0];
-  }
+     single passes misread digits (2023 -> 2025), votes cancel that out.
+     Near-miss readings (2O23, 2O2B) are salvaged by mapping the usual
+     OCR digit look-alikes back to digits before voting; a year that was
+     read exactly at least once beats a purely salvaged one. */
+  const yc={}, yExact=new Set();
+  (t.match(/\b(?:19\d{2}|20\d{2})\b/g)||[]).forEach(y=>{ yc[y]=(yc[y]||0)+2; yExact.add(y); });
+  (t.match(/\b[12][0-9a-z]{3}\b/g)||[]).forEach(tok=>{
+    if(/^\d{4}$/.test(tok)) return;
+    const y=tok.replace(/[oqd]/g,"0").replace(/[il]/g,"1").replace(/z/g,"2").replace(/s/g,"5").replace(/b/g,"8");
+    if(/^(?:19\d{2}|20\d{2})$/.test(y)&&+y>=1950&&+y<=new Date().getFullYear()+1) yc[y]=(yc[y]||0)+1;
+  });
+  if(Object.keys(yc).length) out.vintage=Object.keys(yc).sort((a,b)=>((yExact.has(b)?1:0)-(yExact.has(a)?1:0))||(yc[b]-yc[a]))[0];
   const COUNTRY_KEYS=[["france","France"],["italia","Italy"],["italy","Italy"],["españa","Spain"],["espana","Spain"],["spain","Spain"],["deutschland","Germany"],["germany","Germany"],["portugal","Portugal"],["argentina","Argentina"],["chile","Chile"],["australia","Australia"],["österreich","Austria"],["osterreich","Austria"],["austria","Austria"],["new zealand","New Zealand"],["south africa","South Africa"],["georgia","Georgia"],["greece","Greece"],["hungary","Hungary"],["japan","Japan"],["canada","Canada"],["uruguay","Uruguay"],["united states","USA"],["california","USA"]];
   for(const [k,v] of COUNTRY_KEYS){ if(t.includes(k)){ out.country=v; break; } }
   const REGION_KEYS=[["bordeaux","Bordeaux"],["bourgogne","Burgundy"],["burgundy","Burgundy"],["champagne","Champagne"],["alsace","Alsace"],["rhône","Rhône Valley"],["rhone","Rhône Valley"],["loire","Loire Valley"],["provence","Provence"],["languedoc","Languedoc"],["piemonte","Piedmont"],["piedmont","Piedmont"],["toscana","Tuscany"],["tuscany","Tuscany"],["veneto","Veneto"],["sicilia","Sicily"],["sicily","Sicily"],["rioja","Rioja"],["ribera del duero","Ribera del Duero"],["priorat","Priorat"],["rías baixas","Rías Baixas"],["rias baixas","Rías Baixas"],["napa","Napa Valley"],["sonoma","Sonoma"],["willamette","Willamette Valley"],["finger lakes","Finger Lakes"],["mosel","Mosel"],["rheingau","Rheingau"],["pfalz","Pfalz"],["wachau","Wachau"],["douro","Douro"],["alentejo","Alentejo"],["mendoza","Mendoza"],["maipo","Maipo Valley"],["barossa","Barossa Valley"],["marlborough","Marlborough"],["stellenbosch","Stellenbosch"]];
@@ -593,13 +632,35 @@ function parseLabelText(text){
     if(out.region&&!out.country){ const rr=REGIONS.find(x=>x.n===out.region); if(rr) out.country=rr.c; }
   }
   const lines=String(text||"").split(/\r?\n/);
-  for(const ln of lines){
-    if(/château|chateau|domaine|bodega|tenuta|weingut/i.test(ln)){
-      let p=ln.replace(/\s+/g," ").trim();
-      if(p===p.toUpperCase()&&/[A-ZÀ-Þ]/.test(p)){
-        p=p.toLowerCase().replace(/(^|[\s\-'])(\S)/g,(m,pre,ch)=>pre+ch.toUpperCase());
-      }
-      if(p.length>=4&&p.length<=60){ out.producer=p; break; }
+  const toTitle=s=>s.toLowerCase().replace(/(^|[\s\-'])(\S)/g,(m,pre,ch)=>pre+ch.toUpperCase());
+  /* Strip OCR debris — stray punctuation, lone dashes, single-letter
+     fragments (the "; DOMAINE — N i" tail gold-foil type leaves behind) —
+     while keeping real name words, incl. short ones like "de"/"von". */
+  const SHORT_OK=new Set(["de","du","la","le","di","da","von","ten","del","des","et","au","aux"]);
+  const cleanName=s=>String(s||"").replace(/\s+/g," ").trim()
+    .replace(/^[^A-Za-zÀ-Þ]+/,"").replace(/[^A-Za-zÀ-Þ)]+$/,"")
+    .split(" ").filter(tok=>{ const letters=tok.replace(/[^A-Za-zÀ-Þ]/g,"");
+      return letters.length>=2||SHORT_OK.has(tok.toLowerCase()); }).join(" ").trim();
+  const GENERIC=/^(domaine|château|chateau|bodega|tenuta|weingut|maison|cave|vignoble)s?$/i;
+  const geoLine=s=>{ const l=s.toLowerCase();
+    return APPEL_KEYS.some(([k])=>l.includes(k))||REGION_KEYS.some(([k])=>l.includes(k))||COUNTRY_KEYS.some(([k])=>l.includes(k))
+      ||/appellation|contrôlée|controlee|mis en|bouteille|produit|product of|grand vin|imported|importateur|bottled by|produced by|government|sulfites|www\.|\.com/i.test(s); };
+  const nameLine=s=>{ const c=cleanName(s);
+    if(c.length<4||c.length>48||GENERIC.test(c)||geoLine(c)) return "";
+    return c.split(" ").some(tok=>tok.replace(/[^A-Za-zÀ-Þ]/g,"").length>=4)?c:""; };
+  for(let i=0;i<lines.length&&!out.producer;i++){
+    if(!/château|chateau|domaine|bodega|tenuta|weingut/i.test(lines[i])) continue;
+    let p=cleanName(lines[i]);
+    if(p===p.toUpperCase()&&/[A-ZÀ-Þ]/.test(p)) p=toTitle(p);
+    if(p.length>=4&&p.length<=60&&!GENERIC.test(p)){ out.producer=p; break; }
+    if(GENERIC.test(p)){
+      /* Keyword alone on its line ("DOMAINE" printed over the name): the
+         name is the prominent line right below it — or, in the concatenated
+         multi-pass text, any clean name-like line. */
+      let nm="";
+      for(let j=i+1;j<Math.min(i+3,lines.length)&&!nm;j++) nm=nameLine(lines[j]);
+      if(!nm) for(let j=0;j<lines.length&&!nm;j++) nm=nameLine(lines[j]);
+      if(nm) out.producer=p+" "+(nm===nm.toUpperCase()&&/[A-ZÀ-Þ]/.test(nm)?toTitle(nm):nm);
     }
   }
   if(!out.producer){
@@ -707,6 +768,44 @@ async function runScan(file){
   }
 }
 
+/* ================= label camera (guide frame) =================
+   Framing the label inside the guide crops the shot to the label itself,
+   so the type reaches the OCR passes much larger than in a full-bottle
+   photo — the single biggest factor in read quality. Falls back to the
+   photo picker whenever the live camera is unavailable or denied. */
+let camStream=null;
+async function openCamera(){
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment", width:{ideal:1920}, height:{ideal:1920} }, audio:false });
+  }catch(e){ $("scan-file").click(); return; }
+  const v=$("cam-video"); v.srcObject=camStream;
+  $("cam-wrap").classList.remove("hidden");
+  try{ await v.play(); }catch(e){}
+}
+function closeCamera(){
+  if(camStream){ camStream.getTracks().forEach(tr=>tr.stop()); camStream=null; }
+  const v=$("cam-video"); if(v) v.srcObject=null;
+  $("cam-wrap").classList.add("hidden");
+}
+function captureLabel(){
+  const v=$("cam-video"), fr=$("cam-frame");
+  if(!v.videoWidth||!v.videoHeight){ closeCamera(); $("scan-file").click(); return; }
+  const vr=v.getBoundingClientRect(), rr=fr.getBoundingClientRect();
+  const s=Math.max(vr.width/v.videoWidth, vr.height/v.videoHeight);
+  const ox=(vr.width-v.videoWidth*s)/2, oy=(vr.height-v.videoHeight*s)/2;
+  let sx=(rr.left-vr.left-ox)/s, sy=(rr.top-vr.top-oy)/s, sw=rr.width/s, sh=rr.height/s;
+  const mx=sw*0.03, my=sh*0.03; sx-=mx; sy-=my; sw+=mx*2; sh+=my*2;
+  sx=Math.max(0,sx); sy=Math.max(0,sy);
+  sw=Math.min(v.videoWidth-sx,sw); sh=Math.min(v.videoHeight-sy,sh);
+  const cv=document.createElement("canvas");
+  cv.width=Math.max(2,Math.round(sw)); cv.height=Math.max(2,Math.round(sh));
+  cv.getContext("2d").drawImage(v,sx,sy,sw,sh,0,0,cv.width,cv.height);
+  vib(10);
+  closeCamera();
+  if(cv.toBlob) cv.toBlob(b=>{ if(b) runScan(new File([b],"label.jpg",{type:"image/jpeg"})); else $("scan-file").click(); },"image/jpeg",0.92);
+  else $("scan-file").click();
+}
+
 /* ================= init ================= */
 (function init(){
   loadSel();
@@ -732,7 +831,10 @@ async function runScan(file){
   });
   const cb=$("clear-country"); if(cb) cb.onclick=()=>{ sel.country=""; sel.customCountry=false; comboCountry.set(""); syncClearBtns(); onSelChange(); };
   const crb=$("clear-region"); if(crb) crb.onclick=()=>{ sel.region=""; sel.customRegion=false; comboRegion.set(""); syncClearBtns(); onSelChange(); };
-  $("scan-btn").onclick=()=>$("scan-file").click();
+  $("scan-btn").onclick=()=>{ if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia) openCamera(); else $("scan-file").click(); };
+  const clb2=$("cam-library"); if(clb2) clb2.onclick=()=>{ closeCamera(); $("scan-file").click(); };
+  const ccb=$("cam-cancel"); if(ccb) ccb.onclick=()=>closeCamera();
+  const csb=$("cam-shutter"); if(csb) csb.onclick=()=>captureLabel();
   $("scan-file").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(f) runScan(f); e.target.value=""; });
   $("clear-btn").onclick=()=>{ if(confirm("Clear all bottle fields?")) clearAll(); };
   $("save-btn").onclick=saveWine;
